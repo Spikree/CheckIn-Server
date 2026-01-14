@@ -29,7 +29,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = null;
         String username = null;
 
-        // 1. SEARCH FOR THE COOKIE 🍪
+        // 1. SEARCH FOR THE COOKIE
         if (request.getCookies() != null) {
             for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
                 if ("jwt".equals(cookie.getName())) {
@@ -38,7 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // 2. VALIDATE TOKEN (Wrapped in Try-Catch) 🛡️
+        // 2. VALIDATE TOKEN (Wrapped in Try-Catch)
         if (token != null) {
             try {
                 // Try to extract username

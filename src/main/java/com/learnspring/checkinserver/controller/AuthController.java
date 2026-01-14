@@ -101,4 +101,19 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");
         }
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logoutUser(HttpServletResponse response) {
+        // 1. Create a "Death Cookie" (Same name, same path, but 0 lifespan)
+        Cookie cookie = new Cookie("jwt", null);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false); // Match your login settings
+        cookie.setPath("/");     // Must match the login path
+        cookie.setMaxAge(0);     // 0 = Delete Immediately
+
+        // 2. Send it to the browser
+        response.addCookie(cookie);
+
+        return ResponseEntity.ok("Logged out successfully");
+    }
 }
