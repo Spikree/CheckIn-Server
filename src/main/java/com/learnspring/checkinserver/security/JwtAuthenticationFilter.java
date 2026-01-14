@@ -26,30 +26,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String authHeader = request.getHeader("Authorization");
         String token = null;
         String username = null;
 
-        // 1. Check if the header starts with "Bearer "
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7); // Remove "Bearer " prefix
-            username = jwtUtils.extractUsername(token); // Extract email from token
-        }
-
-        // 2. If token has a username and user is not already authenticated
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-
-            // 3. Validate token
-            if (jwtUtils.validateToken(token, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // 4. Authenticate the user in Spring Security context
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+        // 1. SEARCH FOR THE COOKIE 🍪
+        if (request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                if ("jwt".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                }
             }
         }
+
+        // 2. VALIDATE TOKEN (Wrapped in Try-Catch) 🛡️
+        if (token != null) {
+            try {
+                // Try to extract username
+                username = jwtUtils.extractUsername(token);
+
+                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                    // This is where it crashed before if the user didn't exist!
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+
+                    if (jwtUtils.validateToken(token, userDetails)) {
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                userDetails, null, userDetails.getAuthorities());
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                }
+            } catch (Exception e) {
+                // --- ZOMBIE COOKIE HANDLING ---
+                // If anything goes wrong (User not found, Token corrupted), we delete the bad cookie.
+                System.out.println("Invalid Token or User detected. Clearing cookie.");
+
+                jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie("jwt", null);
+                cookie.setPath("/");
+                cookie.setHttpOnly(true);
+                cookie.setMaxAge(0); // "0" means delete immediately
+                response.addCookie(cookie);
+            }
+        }
+
         filterChain.doFilter(request, response);
     }
 }

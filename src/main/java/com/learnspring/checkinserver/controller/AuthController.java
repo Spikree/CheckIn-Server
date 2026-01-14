@@ -13,6 +13,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -33,7 +35,7 @@ public class AuthController {
 
     // --- SIGNUP FUNCTION (With Auto-Login) ---
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody User user) {
+    public ResponseEntity<?> registerUser(@RequestBody User user, HttpServletResponse response) {
         // 1. Check if email exists (Better to check email since we login with it)
         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email already exists");
@@ -41,12 +43,20 @@ public class AuthController {
 
         // 2. Encrypt the password
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-
-        // 3. Save to DB
         User savedUser = userRepository.save(user);
 
+
         // 4. Generate Token immediately
-        String token = jwtUtils.generateToken(savedUser.getEmail());
+        String token = jwtUtils.generateToken(user.getEmail());
+
+
+        Cookie cookie = new Cookie("jwt", token);
+        cookie.setHttpOnly(true);       // Prevents JavaScript from reading it
+        cookie.setSecure(false);        // Set to TRUE if using HTTPS
+        cookie.setPath("/");            // Available for the whole app
+        cookie.setMaxAge(10 * 60 * 60);
+
+        response.addCookie(cookie);
 
         // 5. Return the Token + ID (Just like Login!)
         return ResponseEntity.ok(new AuthResponse(
@@ -59,26 +69,33 @@ public class AuthController {
 
     // --- LOGIN FUNCTION ---
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        // 1. Authenticate (This checks email/password against DB)
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpServletResponse response) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword())
         );
 
-        // 2. If valid, generate Token
         if (authentication.isAuthenticated()) {
-            // Note: loginRequest.getUsername() actually holds the EMAIL now
             User user = userRepository.findByEmail(loginRequest.getUsername())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
+            // 2. Generate Token
             String token = jwtUtils.generateToken(user.getEmail());
 
-            // 3. Return Response
+            // 3. CREATE THE COOKIE 🍪
+            Cookie cookie = new Cookie("jwt", token);
+            cookie.setHttpOnly(true);       // Prevents JavaScript from reading it
+            cookie.setSecure(false);        // Set to TRUE if using HTTPS
+            cookie.setPath("/");            // Available for the whole app
+            cookie.setMaxAge(10 * 60 * 60);
+
+            // 4. Add Cookie to Response
+            response.addCookie(cookie);
+
             return ResponseEntity.ok(new AuthResponse(
                     user.getId(),
                     user.getUsername(),
                     user.getRole().name(),
-                    token
+                    null
             ));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");
