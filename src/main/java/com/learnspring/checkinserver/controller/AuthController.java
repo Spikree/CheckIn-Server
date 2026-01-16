@@ -2,6 +2,7 @@ package com.learnspring.checkinserver.controller;
 
 import com.learnspring.checkinserver.dto.AuthResponse;
 import com.learnspring.checkinserver.dto.LoginRequest;
+import com.learnspring.checkinserver.model.Role;
 import com.learnspring.checkinserver.model.User;
 import com.learnspring.checkinserver.repository.UserRepository;
 import com.learnspring.checkinserver.security.JwtUtils;
@@ -9,8 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
@@ -36,69 +39,90 @@ public class AuthController {
     // --- SIGNUP FUNCTION (With Auto-Login) ---
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody User user, HttpServletResponse response) {
-        // 1. Check if email exists (Better to check email since we login with it)
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email already exists");
+
+        // 1. CHECK: Is Username taken?
+        if (userRepository.existsByUsername(user.getUsername())) {
+            return ResponseEntity
+                    .status(400)
+                    .body("Error: Username '" + user.getUsername() + "' is already taken!");
         }
 
-        // 2. Encrypt the password
+        if (userRepository.existsByEmail(user.getEmail())) {
+            return ResponseEntity
+                    .status(400)
+                    .body("Error: Email '" + user.getEmail() + "' is already in use!");
+        }
+
         user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+        if (user.getRole() == null) {
+            return ResponseEntity
+                    .status(400)
+                    .body("Role is required!");
+        }
+
+        // 5. Save to Database
         User savedUser = userRepository.save(user);
 
+        // A. Generate Token
+        String token = jwtUtils.generateToken(savedUser.getEmail());
 
-        // 4. Generate Token immediately
-        String token = jwtUtils.generateToken(user.getEmail());
-
-
+        // B. Create Cookie
         Cookie cookie = new Cookie("jwt", token);
-        cookie.setHttpOnly(true);       // Prevents JavaScript from reading it
-        cookie.setSecure(false);        // Set to TRUE if using HTTPS
-        cookie.setPath("/");            // Available for the whole app
-        cookie.setMaxAge(10 * 60 * 60);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false); // Set to true in Production (HTTPS)
+        cookie.setPath("/");
+        cookie.setMaxAge(10 * 60 * 60); // 10 Hours
 
+        // C. Attach Cookie to Response
         response.addCookie(cookie);
 
-        // 5. Return the Token + ID (Just like Login!)
+        // 6. Return Success
         return ResponseEntity.ok(new AuthResponse(
                 savedUser.getId(),
                 savedUser.getUsername(),
-                savedUser.getRole().name(),
-                token
+                savedUser.getRole().name()
         ));
     }
 
     // --- LOGIN FUNCTION ---
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpServletResponse response) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword())
-        );
+        try {
+            // 1. Attempt Authentication (This THROWS an exception if it fails)
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword())
+            );
 
-        if (authentication.isAuthenticated()) {
-            User user = userRepository.findByEmail(loginRequest.getUsername())
+            // 2. If we get here, the password was correct!
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            User user = userRepository.findByEmail(loginRequest.getEmail())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // 2. Generate Token
+            // 3. Generate Token
             String token = jwtUtils.generateToken(user.getEmail());
 
-            // 3. CREATE THE COOKIE 🍪
+            // 4. Create Cookie
             Cookie cookie = new Cookie("jwt", token);
-            cookie.setHttpOnly(true);       // Prevents JavaScript from reading it
-            cookie.setSecure(false);        // Set to TRUE if using HTTPS
-            cookie.setPath("/");            // Available for the whole app
+            cookie.setHttpOnly(true);
+            cookie.setSecure(false); // Set to true for HTTPS
+            cookie.setPath("/");
             cookie.setMaxAge(10 * 60 * 60);
-
-            // 4. Add Cookie to Response
             response.addCookie(cookie);
 
+            // 5. Return Success
             return ResponseEntity.ok(new AuthResponse(
                     user.getId(),
                     user.getUsername(),
-                    user.getRole().name(),
-                    null
+                    user.getRole().name()
             ));
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");
+
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Error: Invalid email or password");
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Login Error: " + e.getMessage());
         }
     }
 
