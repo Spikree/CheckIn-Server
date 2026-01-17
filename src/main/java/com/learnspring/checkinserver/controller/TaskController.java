@@ -4,6 +4,7 @@ import com.learnspring.checkinserver.model.Role;
 import com.learnspring.checkinserver.model.Task;
 import com.learnspring.checkinserver.model.TaskLog;
 import com.learnspring.checkinserver.model.User;
+import com.learnspring.checkinserver.payload.TaskRequest;
 import com.learnspring.checkinserver.repository.ParentStudentRepository;
 import com.learnspring.checkinserver.repository.TaskLogRepository;
 import com.learnspring.checkinserver.repository.TaskRepository;
@@ -35,34 +36,39 @@ public class TaskController {
     @Autowired
     private ParentStudentRepository parentStudentRepository;
 
-    // --- 1. Create Task ---
     @PostMapping("/users/{userId}/tasks")
-    public Task createTask(@PathVariable long userId, @RequestBody String description, Authentication authentication) {
+    public ResponseEntity<?> createTask(@PathVariable long userId,
+                                        @RequestBody TaskRequest taskRequest, // <--- CHANGE THIS PART
+                                        Authentication authentication) {
 
-        // A. Get the "Actor" (Who is trying to create the task?)
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
         User actor = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("Actor not found"));
 
-        // B. Get the "Target" (Who is this task for?)
-        User target = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Target user not found"));
+        Optional<User> targetOptional = userRepository.findById(userId);
+        if (targetOptional.isEmpty()) {
+            return ResponseEntity.status(404).body("Error: Target user not found.");
+        }
+        User target = targetOptional.get();
 
-        // C. PERMISSION CHECK
         boolean isSelf = actor.getId().equals(target.getId());
         boolean isParent = actor.getRole() == Role.PARENT;
         boolean isLinked = parentStudentRepository.areUsersLinked(actor.getId(), target.getId());
 
-        // Allow if: (It's my own task) OR (I am the Parent assigning a task to my child)
         if (isSelf || (isParent && isLinked)) {
             Task task = new Task();
-            task.setDescription(description);
+
+            task.setTitle(taskRequest.getTitle());
+            task.setDescription(taskRequest.getDescription());
+
             task.setActive(true);
-            task.setUser(target); // Assign to the TARGET (Student), not the Actor (Parent)
-            return taskRepository.save(task);
+            task.setUser(target);
+
+            Task savedTask = taskRepository.save(task);
+            return ResponseEntity.ok(savedTask);
         }
 
-        throw new RuntimeException("Unauthorized: You cannot create tasks for this user.");
+        return ResponseEntity.status(403).body("Error: Unauthorized.");
     }
 
     @GetMapping("/users/{userId}/tasks")

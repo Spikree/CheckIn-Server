@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/family")
@@ -75,17 +76,26 @@ public class FamilyController {
     // POST /api/family/requests/{requestId}/accept
     @PostMapping("/requests/{requestId}/accept")
     public ResponseEntity<?> acceptRequest(@PathVariable Long requestId, Authentication authentication) {
-        UserDetails meDetails = (UserDetails) authentication.getPrincipal();
-        User me = userRepository.findByEmail(meDetails.getUsername()).orElseThrow();
 
-        // Find the request ONLY if it belongs to me (Security Check!)
-        ParentStudent request = parentStudentRepository.findByIdAndReceiverId(requestId, me.getId())
-                .orElseThrow(() -> new RuntimeException("Request not found or not yours"));
+        UserDetails meDetails = (UserDetails) authentication.getPrincipal();
+        User me = userRepository.findByEmail(meDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User context error"));
+
+        Optional<ParentStudent> requestOptional = parentStudentRepository.findByIdAndReceiverId(requestId, me.getId());
+
+        if (requestOptional.isEmpty()) {
+            return ResponseEntity
+                    .status(404) // or 403
+                    .body("Error: Request not found or it was not sent to you.");
+        }
+
+        ParentStudent request = requestOptional.get();
 
         request.setStatus(ParentStudent.Status.ACCEPTED);
+
         parentStudentRepository.save(request);
 
-        return ResponseEntity.ok("You are now linked with " + request.getRequester().getUsername());
+        return ResponseEntity.ok("Success! You are now linked with " + request.getRequester().getUsername());
     }
 
     // GET /api/family/requests/sent
@@ -115,7 +125,7 @@ public class FamilyController {
         return ResponseEntity.ok("Request cancelled successfully.");
     }
 
-    // GET /api/family/children
+    // GET /api/family/₹
     @GetMapping("/children")
     public ResponseEntity<?> getMyChildren(Authentication authentication) {
         UserDetails meDetails = (UserDetails) authentication.getPrincipal();

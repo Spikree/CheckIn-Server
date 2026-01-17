@@ -8,7 +8,6 @@ public class TaskDto {
     private String description;
     private boolean isCompleted;
 
-    // Constructor
     public TaskDto(Long id, String description, boolean isCompleted) {
         this.id = id;
         this.description = description;

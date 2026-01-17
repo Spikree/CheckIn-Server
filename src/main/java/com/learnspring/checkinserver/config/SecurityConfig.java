@@ -45,11 +45,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll() // Allow Login/Register
                         .anyRequest().authenticated() // Block everything else
                 )
-                // DISABLE Basic Auth & Session State (We use Tokens now)
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                // Note: We REMOVED .authenticationProvider() here.
-                // Spring automatically uses the UserDetailsService bean we injected above.
 
                 // Add our JWT Filter BEFORE the standard UsernamePasswordAuthenticationFilter
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
