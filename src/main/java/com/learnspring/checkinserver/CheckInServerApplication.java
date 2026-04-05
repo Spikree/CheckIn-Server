@@ -9,5 +9,4 @@ public class CheckInServerApplication {
     public static void main(String[] args) {
         SpringApplication.run(CheckInServerApplication.class, args);
     }
-
 }

@@ -3,6 +3,7 @@ package com.learnspring.checkinserver.controller;
 import com.learnspring.checkinserver.model.ParentStudent;
 import com.learnspring.checkinserver.model.Role;
 import com.learnspring.checkinserver.model.User;
+import com.learnspring.checkinserver.payload.EmailRequest;
 import com.learnspring.checkinserver.repository.ParentStudentRepository;
 import com.learnspring.checkinserver.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,28 +26,42 @@ public class FamilyController {
     @Autowired
     private ParentStudentRepository parentStudentRepository;
 
-    // POST /api/family/request?targetId=5
+    // POST /api/family/request
     @PostMapping("/request")
-    public ResponseEntity<?> sendRequest(@RequestParam Long targetId, Authentication authentication) {
+    public ResponseEntity<?> sendRequest(@RequestBody EmailRequest request, // <--- CHANGED THIS
+                                         Authentication authentication) {
+
+        String targetEmail = request.getEmail();
+
+        // Check if email was actually sent
+        if (targetEmail == null || targetEmail.isEmpty()) {
+            return ResponseEntity.badRequest().body("Error: Email is required.");
+        }
+
+        // 1. Get Me
         UserDetails meDetails = (UserDetails) authentication.getPrincipal();
         User me = userRepository.findByEmail(meDetails.getUsername()).orElseThrow();
 
-        // FIX: Find by ID instead of Email
-        User target = userRepository.findById(targetId)
-                .orElseThrow(() -> new RuntimeException("User with ID " + targetId + " not found"));
+        // 2. Find Target
+        Optional<User> targetOptional = userRepository.findByEmail(targetEmail);
 
-
-        if (me.getRole() == Role.STUDENT && target.getRole() == Role.STUDENT) {
+        if (targetOptional.isEmpty()) {
             return ResponseEntity
-                    .badRequest()
-                    .body("Error: Students cannot link with other Students. Ask a Parent to send the request.");
+                    .status(404)
+                    .body("Error: User with email '" + targetEmail + "' not found.");
         }
 
+        User target = targetOptional.get();
+
+        // 3. Validation Logic
         if (me.getId().equals(target.getId())) {
             return ResponseEntity.badRequest().body("You cannot link with yourself.");
         }
 
-        // Check if link already exists (in either direction)
+        if (me.getRole() == Role.STUDENT && target.getRole() == Role.STUDENT) {
+            return ResponseEntity.badRequest().body("Students cannot link with other Students.");
+        }
+
         boolean exists = parentStudentRepository.existsByRequesterIdAndReceiverId(me.getId(), target.getId()) ||
                 parentStudentRepository.existsByReceiverIdAndRequesterId(me.getId(), target.getId());
 
@@ -54,10 +69,11 @@ public class FamilyController {
             return ResponseEntity.badRequest().body("Request already exists or you are already linked.");
         }
 
-        ParentStudent request = new ParentStudent(me, target);
-        parentStudentRepository.save(request);
+        // 4. Save
+        ParentStudent linkRequest = new ParentStudent(me, target);
+        parentStudentRepository.save(linkRequest);
 
-        return ResponseEntity.ok("Request sent to User ID: " + target.getId());
+        return ResponseEntity.ok("Request sent to " + target.getUsername());
     }
 
     // GET /api/family/requests

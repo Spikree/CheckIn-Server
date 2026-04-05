@@ -14,6 +14,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
@@ -139,5 +140,28 @@ public class AuthController {
         response.addCookie(cookie);
 
         return ResponseEntity.ok("Logged out successfully");
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> checkAuth(Authentication authentication) {
+        // 1. If the request made it past the JwtFilter, they are authenticated!
+        // But let's double-check just to be safe.
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
+        }
+
+        // 2. Get the user's email from the security context
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+
+        // 3. Look them up in the database to get their ID and Role
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 4. Return the exact same AuthResponse we use for Login!
+        return ResponseEntity.ok(new AuthResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getRole().name()
+        ));
     }
 }
