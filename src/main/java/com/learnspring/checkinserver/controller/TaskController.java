@@ -1,5 +1,6 @@
 package com.learnspring.checkinserver.controller;
 
+import com.learnspring.checkinserver.dto.TaskDto;
 import com.learnspring.checkinserver.model.Role;
 import com.learnspring.checkinserver.model.Task;
 import com.learnspring.checkinserver.model.TaskLog;
@@ -13,10 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -118,19 +121,18 @@ public class TaskController {
 
     // --- 3. Toggle Task ---
     // 3. Toggle Task (Strictly Owner Only)
-    @PostMapping("/users/{userId}/tasks/{taskId}/toggle")
-    public String toggleTask(@PathVariable Long userId, @PathVariable Long taskId, Principal principal) {
+    @PostMapping("/tasks/{taskId}/toggle")
+    @Transactional
+    public String toggleTask(@PathVariable Long taskId, Principal principal) {
 
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found"));
 
         // RULE: Only the TASK OWNER can tick it off.
-        // Even if you are the Parent, this check will FAIL (which is what you want).
         if (!task.getUser().getEmail().equals(principal.getName())) {
             throw new RuntimeException("Unauthorized: Only the assigned student can complete this task!");
         }
 
-        // ... Rest of the logic (TaskLog, etc.) ...
         LocalDate today = LocalDate.now();
         Optional<TaskLog> existingLog = taskLogRepository.findByTaskIdAndDate(taskId, today);
 
@@ -144,5 +146,32 @@ public class TaskController {
             taskLogRepository.save(log);
             return "Task Checked";
         }
+    }
+
+    @GetMapping("/tasks/completed")
+    public ResponseEntity<?> getMyDailyTasks(Authentication authentication) {
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        User me = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        List<Task> myTasks = taskRepository.findByUserId(me.getId());
+        LocalDate today = LocalDate.now();
+
+        List<TaskDto> responseList = new ArrayList<>();
+
+        for (Task task : myTasks) {
+            boolean isDoneToday = taskLogRepository.findByTaskIdAndDate(task.getId(), today).isPresent();
+
+            if (isDoneToday) {
+                responseList.add(new TaskDto(
+                        task.getId(),
+                        task.getTitle(),
+                        task.getDescription(),
+                        true // It's obviously true if we are in this block
+                ));
+            }
+        }
+
+        return ResponseEntity.ok(responseList);
     }
 }
