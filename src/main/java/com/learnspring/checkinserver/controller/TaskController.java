@@ -71,6 +71,7 @@ public class TaskController {
         return ResponseEntity.status(403).body("Error: Unauthorized.");
     }
 
+    // this is for parents to get their childrens task
     @GetMapping("/users/{userId}/tasks")
     public ResponseEntity<?> getTasksForUser(@PathVariable Long userId, Authentication authentication) {
 
@@ -97,6 +98,22 @@ public class TaskController {
 
         // BLOCK everything else (Students looking at Parents, Strangers, etc.)
         return ResponseEntity.status(403).body("Access Denied: You are not authorized to view these tasks.");
+    }
+
+
+    // this is for students to get their tasks
+    // GET /api/tasks
+    @GetMapping("/tasks")
+    public ResponseEntity<?> getMyOwnTasks(Authentication authentication) {
+
+        // 1. Who is logged in?
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        User me = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 2. Fetch and return ONLY their tasks. No security checks needed
+        // because we are strictly using the token identity!
+        return ResponseEntity.ok(taskRepository.findByUserId(me.getId()));
     }
 
     // --- 3. Toggle Task ---

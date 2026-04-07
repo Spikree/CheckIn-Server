@@ -152,7 +152,7 @@ public class FamilyController {
         return ResponseEntity.ok("Request cancelled successfully.");
     }
 
-    // GET /api/family/₹
+    // GET /api/family/children
     @GetMapping("/children")
     public ResponseEntity<?> getMyChildren(Authentication authentication) {
         UserDetails meDetails = (UserDetails) authentication.getPrincipal();
