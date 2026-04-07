@@ -28,7 +28,7 @@ public class FamilyController {
 
     // POST /api/family/request
     @PostMapping("/request")
-    public ResponseEntity<?> sendRequest(@RequestBody EmailRequest request, // <--- CHANGED THIS
+    public ResponseEntity<?> sendRequest(@RequestBody EmailRequest request,
                                          Authentication authentication) {
 
         String targetEmail = request.getEmail();
@@ -101,17 +101,28 @@ public class FamilyController {
 
         if (requestOptional.isEmpty()) {
             return ResponseEntity
-                    .status(404) // or 403
+                    .status(404)
                     .body("Error: Request not found or it was not sent to you.");
         }
 
         ParentStudent request = requestOptional.get();
-
         request.setStatus(ParentStudent.Status.ACCEPTED);
 
-        parentStudentRepository.save(request);
+        // 👇 ADDED SAFETY NET HERE
+        try {
+            parentStudentRepository.save(request);
+            return ResponseEntity.ok("Success! You are now linked with " + request.getRequester().getUsername());
 
-        return ResponseEntity.ok("Success! You are now linked with " + request.getRequester().getUsername());
+        } catch (Exception e) {
+            // Log the actual error for the backend developers (you)
+            System.err.println("CRITICAL ERROR saving accepted request: " + e.getMessage());
+            e.printStackTrace();
+
+            // Send a clean, safe JSON error back to the React frontend
+            return ResponseEntity
+                    .status(500)
+                    .body("An unexpected server error occurred while accepting the request. Please try again later.");
+        }
     }
 
     // GET /api/family/requests/sent
