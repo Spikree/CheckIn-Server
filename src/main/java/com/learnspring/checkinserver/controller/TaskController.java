@@ -174,4 +174,79 @@ public class TaskController {
 
         return ResponseEntity.ok(responseList);
     }
+
+    // This controller is for parents to get the tasks the students have completed today
+    // GET /api/users/{userId}/tasks/completed
+    @GetMapping("/users/{userId}/tasks/completed")
+    public ResponseEntity<?> getCompletedTasksForStudent(@PathVariable Long userId, Authentication authentication) {
+
+        // 1. Get the Parent (The one making the request)
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        User parent = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("Parent not found"));
+
+        // 2. Security Check: Is this person actually a parent and linked to this student?
+        boolean isParent = parent.getRole() == Role.PARENT;
+        boolean isLinked = parentStudentRepository.areUsersLinked(parent.getId(), userId);
+
+        if (!isParent || !isLinked) {
+            return ResponseEntity.status(403).body("Access Denied: You are not linked to this student.");
+        }
+
+        // 3. Logic: Get the student's tasks and check today's logs
+        List<Task> studentTasks = taskRepository.findByUserId(userId);
+        LocalDate today = LocalDate.now();
+        List<TaskDto> completedToday = new ArrayList<>();
+
+        for (Task task : studentTasks) {
+            boolean isDoneToday = taskLogRepository.findByTaskIdAndDate(task.getId(), today).isPresent();
+
+            if (isDoneToday) {
+                completedToday.add(new TaskDto(
+                        task.getId(),
+                        task.getTitle(),
+                        task.getDescription(),
+                        true
+                ));
+            }
+        }
+
+        return ResponseEntity.ok(completedToday);
+    }
+
+    // This controller is to get all the previous tasks for both the parents and the students
+    @GetMapping("/tasks/{taskId}/history")
+    public ResponseEntity<?> getTaskHistory(@PathVariable Long taskId, Authentication authentication) {
+
+        // 1. Who is making this request?
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        User requester = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 2. What task are they asking about, and who owns it?
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+        User taskOwner = task.getUser();
+
+        // 3. Security Check Variables
+        boolean isOwner = requester.getId().equals(taskOwner.getId());
+        boolean isParent = requester.getRole() == Role.PARENT;
+        boolean isLinkedParent = isParent && parentStudentRepository.areUsersLinked(requester.getId(), taskOwner.getId());
+
+        // 4. The Vault Door: Deny if they are neither the owner nor a linked parent
+        if (!isOwner && !isLinkedParent) {
+            return ResponseEntity.status(403)
+                    .body("Access Denied: You are not authorized to view this task's history.");
+        }
+
+        // 5. If they pass the check, fetch the logs
+        List<TaskLog> history = taskLogRepository.findByTaskId(taskId);
+
+        // 6. Map them to a list of dates
+        List<LocalDate> completedDates = history.stream()
+                .map(TaskLog::getDate)
+                .toList();
+
+        return ResponseEntity.ok(completedDates);
+    }
 }
