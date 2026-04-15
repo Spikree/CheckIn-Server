@@ -41,7 +41,7 @@ public class TaskController {
 
     @PostMapping("/users/{userId}/tasks")
     public ResponseEntity<?> createTask(@PathVariable long userId,
-                                        @RequestBody TaskRequest taskRequest, // <--- CHANGE THIS PART
+                                        @RequestBody TaskRequest taskRequest,
                                         Authentication authentication) {
 
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
@@ -66,6 +66,12 @@ public class TaskController {
 
             task.setActive(true);
             task.setUser(target);
+
+            if (isSelf) {
+                task.setAssignedBy("Self");
+            } else {
+                task.setAssignedBy(actor.getUsername());
+            }
 
             Task savedTask = taskRepository.save(task);
             return ResponseEntity.ok(savedTask);
@@ -167,7 +173,8 @@ public class TaskController {
                         task.getId(),
                         task.getTitle(),
                         task.getDescription(),
-                        true // It's obviously true if we are in this block
+                        true, // It's obviously true if we are in this block
+                        task.getAssignedBy()
                 ));
             }
         }
@@ -206,7 +213,9 @@ public class TaskController {
                         task.getId(),
                         task.getTitle(),
                         task.getDescription(),
-                        true
+
+                        true,
+                        task.getAssignedBy()
                 ));
             }
         }

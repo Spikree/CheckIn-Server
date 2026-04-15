@@ -20,6 +20,9 @@ public class Task {
     @Column(nullable = false)
     private boolean isActive;
 
+    @Column(nullable = false)
+    private String assignedBy;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnore
